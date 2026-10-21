@@ -23,6 +23,11 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+if [[ "$CONFIG" == "release" ]]; then
+  # Drop debug symbols and their source paths (they contain the builder's home folder).
+  strip -S -x "$APP/Contents/MacOS/Pegline"
+fi
+
 # Ad-hoc signature with the hardened runtime. Replace "-" with a Developer ID to distribute.
 codesign --force --sign - --options runtime "$APP"
 echo "Built $APP"

@@ -25,9 +25,14 @@ jobs:
         run: swift test
       - name: Build app bundle
         run: scripts/build-app.sh release
-      - name: Debug hooks are not in the release build
+      - name: Release build has no debug hooks or build paths
         run: |
-          if strings build/Pegline.app/Contents/MacOS/Pegline | grep -E "PEGLINE_SELFTEST|render-preview"; then
-            echo "Debug-only code found in the release binary" >&2
+          BIN=build/Pegline.app/Contents/MacOS/Pegline
+          if strings -a "$BIN" | grep -E "PEGLINE_SELFTEST|render-preview|/Users/|/home/"; then
+            echo "Debug-only code or local paths found in the release binary" >&2
+            exit 1
+          fi
+          if nm -ap "$BIN" | grep -E " (OSO|SO) "; then
+            echo "Debug symbols with source paths found in the release binary" >&2
             exit 1
           fi
