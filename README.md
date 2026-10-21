@@ -47,3 +47,7 @@ log stream --predicate 'subsystem == "app.pegline"'
 scripts/build-app.sh debug && build/Pegline.app/Contents/MacOS/Pegline --render-preview out.png dark 6 a.png b.png   # рендер верёвки в PNG (только отладочная сборка)
 scripts/build-app.sh debug && PEGLINE_SELFTEST=1 build/Pegline.app/Contents/MacOS/Pegline  # самопроверка
 ```
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
