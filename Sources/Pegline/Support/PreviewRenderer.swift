@@ -2,7 +2,7 @@
 import AppKit
 import PeglineCore
 
-/// `Pegline --render-preview <out.png> [light|dark] [count] image1 image2 …`
+/// `Pegline --render-preview <out.png> [light|dark] [transparent] [count] image1 image2 …`
 /// Renders the line offscreen so its look can be checked without screen recording permission.
 enum PreviewRenderer {
     static func run(arguments: [String]) {
@@ -14,6 +14,11 @@ enum PreviewRenderer {
         var dark = false
         if let first = rest.first, first == "dark" || first == "light" {
             dark = first == "dark"
+            rest.removeFirst()
+        }
+        var transparent = false
+        if let first = rest.first, first == "transparent" {
+            transparent = true
             rest.removeFirst()
         }
         var visible = 7
@@ -48,8 +53,10 @@ enum PreviewRenderer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return }
         // A neutral backdrop standing in for the desktop.
+        if !transparent {
         ctx.setFillColor(dark ? CGColor(srgbRed: 0.13, green: 0.14, blue: 0.16, alpha: 1) : CGColor(srgbRed: 0.93, green: 0.94, blue: 0.95, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale))
+        }
         ctx.scaleBy(x: scale, y: scale)
         view.canvas.layer?.render(in: ctx)
         guard let image = ctx.makeImage() else { return }

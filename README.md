@@ -1,6 +1,11 @@
-# Pegline
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.png">
+  <img src="docs/banner-light.png" alt="Pegline — screenshots on a clothesline under the menu bar, macOS 27" width="100%">
+</picture>
 
 Снимки экрана на бельевой верёвке. Каждый новый скриншот повисает на тонкой верёвке под строкой меню: клик — скопировать, двойной клик — «Просмотр», удержание — «Разметка», перетаскивание — в любую программу или папку.
+
+<img src="docs/overview.png" width="100%" alt="Pegline: Swift 6, AppKit, Core Animation, FSEvents. About 6,100 lines, no dependencies, no network, 32 tests. Click to copy, double-click for Preview, hold for Markup, drag into any app. Clipboard screenshots and Telegram images too.">
 
 ## Сборка
 
