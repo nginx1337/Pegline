@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import PeglineCore
 
@@ -57,3 +58,4 @@ enum PreviewRenderer {
         print("wrote \(output) \(Int(size.width))×\(Int(size.height)) with \(records.count) photos")
     }
 }
+#endif

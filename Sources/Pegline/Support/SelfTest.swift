@@ -161,6 +161,14 @@ enum SelfTest {
                 scratch.removePersistentDomain(forName: suite)
             }
 
+            // The saved line is private to this user.
+            model.store.saveNow()
+            let support = ProcessInfo.processInfo.environment["PEGLINE_STORE_DIR"].map { URL(fileURLWithPath: $0) }
+            if let archive = support?.appendingPathComponent("line.json") {
+                let mode = (try? FileManager.default.attributesOfItem(atPath: archive.path)[.posixPermissions] as? Int) ?? 0
+                check(mode == 0o600, "line.json readable by this user only")
+            }
+
             // Hide releases everything.
             line.hide()
             await wait(0.8)
@@ -201,6 +209,22 @@ enum SelfTest {
                     print("INFO saved \(hung.path)")
                 }
                 check(model.store.shots.count == countBefore + 1, "exactly one photo added")
+
+                if let hung {
+                    let mode = (try? FileManager.default.attributesOfItem(atPath: hung.path)[.posixPermissions] as? Int) ?? 0
+                    let folderMode = (try? FileManager.default.attributesOfItem(atPath: ClipboardImporter.folder.path)[.posixPermissions] as? Int) ?? 0
+                    check(mode == 0o600 && folderMode == 0o700, "clipboard images readable by this user only")
+                }
+
+                // A password manager's concealed item is never read or saved.
+                let secret = NSPasteboardItem()
+                secret.setData(ImageInfo.pngData(path: model.store.shots.last!.path)!, forType: .png)
+                secret.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+                let beforeSecret = model.store.shots.count
+                pb.clearContents()
+                pb.writeObjects([secret])
+                await wait(1.0)
+                check(model.store.shots.count == beforeSecret, "concealed clipboard item ignored")
 
                 // The same picture copied again does not hang twice.
                 pb.clearContents()
@@ -259,6 +283,15 @@ enum SelfTest {
                 model.actions.copy(model.store.shots.last!)
                 await wait(1.0)
                 check(model.store.shots.count == count, "own copy not re-added")
+                // Data that only claims to be PNG is not written to disk.
+                let beforeJunk = model.store.shots.count
+                let junk = NSPasteboardItem()
+                junk.setData(Data("not an image".utf8), forType: .png)
+                pb.clearContents()
+                pb.writeObjects([junk])
+                await wait(1.0)
+                check(model.store.shots.count == beforeJunk, "fake image data rejected")
+
                 // Leave plain text behind so other running copies of Pegline have nothing to pick up.
                 pb.clearContents()
                 pb.setString("Pegline self-test", forType: .string)

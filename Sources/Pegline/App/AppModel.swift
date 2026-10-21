@@ -145,7 +145,7 @@ final class AppModel {
             addedAt: Date(), pixelWidth: size.width, pixelHeight: size.height, origin: "clipboard")
         if store.add(record) {
             shotsAddedThisSession += 1
-            Log.detection.info("Clipboard image saved as \(url.lastPathComponent, privacy: .public)")
+            Log.detection.info("Clipboard image saved as \(url.lastPathComponent, privacy: .private)")
         }
     }
 

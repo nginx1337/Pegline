@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, pegline]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    # Pegline targets macOS 27 and needs the macOS 27 SDK (Xcode 27).
+    # Change the runner label if GitHub names its macOS 27 image differently.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcrun --show-sdk-version
+          swift --version
+      - name: Unit tests
+        run: swift test
+      - name: Build app bundle
+        run: scripts/build-app.sh release
+      - name: Debug hooks are not in the release build
+        run: |
+          if strings build/Pegline.app/Contents/MacOS/Pegline | grep -E "PEGLINE_SELFTEST|render-preview"; then
+            echo "Debug-only code found in the release binary" >&2
+            exit 1
+          fi

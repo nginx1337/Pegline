@@ -36,7 +36,9 @@ final class ShotStore {
         // Lets the self-test run beside a real instance without touching its line.
         if let dir = ProcessInfo.processInfo.environment["PEGLINE_STORE_DIR"] { support = URL(fileURLWithPath: dir) }
         #endif
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: support.path)
         archiveURL = support.appendingPathComponent("line.json")
         collection = ShotCollection(capacity: capacity)
         load()
@@ -68,7 +70,7 @@ final class ShotStore {
     func add(_ record: ShotRecord) -> Bool {
         let before = shots
         guard collection.insert(record) else { return false }
-        Log.store.info("Added \(record.fileName, privacy: .public)")
+        Log.store.info("Added \(record.fileName, privacy: .private)")
         notify(.inserted(record))
         // Anything that fell off the end because of capacity (the file itself is untouched).
         let keep = Set(shots.map(\.id))
@@ -79,7 +81,7 @@ final class ShotStore {
 
     func remove(id: UUID, reason: RemovalReason) {
         guard let removed = collection.remove(id: id, dismiss: reason == .unpinned) else { return }
-        Log.store.info("Removed \(removed.fileName, privacy: .public)")
+        Log.store.info("Removed \(removed.fileName, privacy: .private)")
         notify(.removed(removed, reason))
         scheduleSave()
     }
@@ -149,7 +151,7 @@ final class ShotStore {
                 return
             }
             collection.update(updated)
-            Log.store.info("Followed rename to \(updated.fileName, privacy: .public)")
+            Log.store.info("Followed rename to \(updated.fileName, privacy: .private)")
             notify(.updated(updated, contentChanged: false))
             scheduleSave()
         } else {
@@ -196,7 +198,9 @@ final class ShotStore {
     func saveNow() {
         saveTask?.cancel()
         do {
+            // The list of screenshot paths is readable by this user only.
             try LineArchive(shots: shots).encoded().write(to: archiveURL, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: archiveURL.path)
         } catch {
             Log.store.error("Could not save line.json: \(error.localizedDescription, privacy: .public)")
         }

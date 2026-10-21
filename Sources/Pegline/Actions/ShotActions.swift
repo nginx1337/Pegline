@@ -30,7 +30,9 @@ final class ShotActions {
         let item = NSPasteboardItem()
         item.setString(url.absoluteString, forType: .fileURL)
         let type = UTType(filenameExtension: url.pathExtension) ?? .png
-        if let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
+        let size = FileProbe.read(path: url.path)?.size ?? -1
+        // Very large files go on the clipboard as a file reference only.
+        if ImageLimits.allows(bytes: size), let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
             item.setData(data, forType: NSPasteboard.PasteboardType(type.identifier))
             if type != .png, let png = ImageInfo.pngData(path: url.path) {
                 item.setData(png, forType: .png)
@@ -40,7 +42,7 @@ final class ShotActions {
         pasteboard.clearContents()
         let ok = pasteboard.writeObjects([item])
         onDidWritePasteboard?()
-        Log.actions.info("Copied \(record.fileName, privacy: .public): \(ok)")
+        Log.actions.info("Copied \(record.fileName, privacy: .private): \(ok)")
         return ok
     }
 

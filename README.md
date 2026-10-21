@@ -13,6 +13,10 @@ swift test                      # юнит-тесты ядра
 
 Установка: перетащите `build/Pegline.app` в «Программы» и откройте.
 
+## Безопасность и приватность
+
+Pegline не использует сеть: снимки и их список остаются на этом Mac, а секреты из менеджеров паролей в буфере обмена не читаются. Подробно — в [SECURITY.md](SECURITY.md), там же написано, как сообщить об уязвимости.
+
 ## Как устроено
 
 | Часть | Где |
@@ -40,6 +44,6 @@ swift test                      # юнит-тесты ядра
 
 ```bash
 log stream --predicate 'subsystem == "app.pegline"'
-build/Pegline.app/Contents/MacOS/Pegline --render-preview out.png dark 6 a.png b.png   # рендер верёвки в PNG
+scripts/build-app.sh debug && build/Pegline.app/Contents/MacOS/Pegline --render-preview out.png dark 6 a.png b.png   # рендер верёвки в PNG (только отладочная сборка)
 scripts/build-app.sh debug && PEGLINE_SELFTEST=1 build/Pegline.app/Contents/MacOS/Pegline  # самопроверка
 ```

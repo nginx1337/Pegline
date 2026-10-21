@@ -83,12 +83,13 @@ final class ClipboardWatcher {
             let reference: ClipboardClassifier.FileReference = exists && isDir.boolValue
                 ? .notAnImage
                 : ClipboardClassifier.fileReference(path: url.path, exists: exists, readable: readable, isImage: imageType != nil)
-            Log.detection.info("Copied file \(url.lastPathComponent, privacy: .public): \(String(describing: reference), privacy: .public)")
+            Log.detection.info("Copied file \(url.lastPathComponent, privacy: .private): \(String(describing: reference), privacy: .public)")
             switch reference {
             case .imageInPlace:
                 inPlace.append(url)
             case .imageToCopy:
-                if let data = try? Data(contentsOf: url), let imageType {
+                let size = FileProbe.read(path: url.path)?.size ?? -1
+                if ImageLimits.allows(bytes: size), let data = try? Data(contentsOf: url), let imageType {
                     deliver(Capture(data: data, type: imageType, isScreenshot: false))
                     copied = true
                 }
@@ -109,6 +110,10 @@ final class ClipboardWatcher {
     private func captureImageData(type: String, isScreenshot: Bool) {
         guard let data = pasteboard.data(forType: NSPasteboard.PasteboardType(type)) else {
             Log.detection.error("Clipboard image could not be read (access denied?)")
+            return
+        }
+        guard ImageLimits.allows(bytes: Int64(data.count)) else {
+            Log.detection.info("Skipped clipboard image: \(data.count) bytes is over the limit")
             return
         }
         deliver(Capture(data: data, type: type, isScreenshot: isScreenshot))
@@ -168,9 +173,19 @@ enum ClipboardImporter {
     static func save(_ capture: ClipboardWatcher.Capture, date: Date = Date()) -> URL? {
         let folder = folder
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            // Only the user can open this folder: copied images may be private.
+            try FileManager.default.createDirectory(
+                at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
         } catch {
-            Log.detection.error("Cannot create \(folder.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Log.detection.error("Cannot create \(folder.path, privacy: .private): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        // Only real, reasonably sized images are written; anything else is dropped unseen.
+        guard let pixels = ImageInfo.pixelSize(data: capture.data),
+              ImageLimits.allows(width: pixels.width, height: pixels.height)
+        else {
+            Log.detection.info("Skipped clipboard data that is not a usable image")
             return nil
         }
         let ext = ClipboardClassifier.fileExtension(forType: capture.type)
@@ -186,6 +201,7 @@ enum ClipboardImporter {
         }
         do {
             try png.write(to: url, options: .withoutOverwriting)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             if capture.isScreenshot {
                 // Mark it like the system tool does, so it is recognised as a screenshot everywhere.
                 let flag: [UInt8] = [1]

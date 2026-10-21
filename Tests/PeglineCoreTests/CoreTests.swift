@@ -261,3 +261,23 @@ struct DismissTests {
         #expect(ClipboardClassifier.isTemporaryLocation("/Volumes/Ext/.Trashes/501/shot.png"))
     }
 }
+
+@Suite("Safety")
+struct SafetyTests {
+    @Test func concealedClipboardIsIgnored() {
+        let secret = [["public.png", "org.nspasteboard.ConcealedType"]]
+        #expect(ClipboardPrivacy.isPrivate(items: secret))
+        #expect(ClipboardClassifier.classify(items: secret) == .nothingUseful)
+        let transient = [["public.tiff"], ["org.nspasteboard.TransientType"]]
+        #expect(ClipboardClassifier.classify(items: transient) == .nothingUseful)
+        #expect(!ClipboardPrivacy.isPrivate(items: [["public.png"]]))
+    }
+
+    @Test func imageLimits() {
+        #expect(ImageLimits.allows(width: 6016 * 3, height: 3384))
+        #expect(!ImageLimits.allows(width: 100_000, height: 100_000))
+        #expect(!ImageLimits.allows(width: 0, height: 10))
+        #expect(ImageLimits.allows(bytes: 40 * 1024 * 1024))
+        #expect(!ImageLimits.allows(bytes: 2 * 1024 * 1024 * 1024))
+    }
+}

@@ -65,7 +65,7 @@ final class ScreenshotDetector {
         classifier = ScreenshotClassifier(customPrefix: SystemScreenshotPrefs.namePrefix)
         let resolved = Self.resolveFolder(prefs)
         if resolved.standardizedFileURL.path != folder.standardizedFileURL.path {
-            Log.detection.info("Screenshot folder is now \(resolved.path, privacy: .public)")
+            Log.detection.info("Screenshot folder is now \(resolved.path, privacy: .private)")
             folder = resolved
             restartWatcher()
         } else {
@@ -91,7 +91,7 @@ final class ScreenshotDetector {
             accessProblem = nil
         } catch {
             accessProblem = "Нет доступа к папке «\(folder.lastPathComponent)». Разрешите доступ в Системных настройках → Конфиденциальность и безопасность → Файлы и папки."
-            Log.detection.error("No access to \(self.folder.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Log.detection.error("No access to \(self.folder.path, privacy: .private): \(error.localizedDescription, privacy: .public)")
         }
         onStateChanged?()
         return accessProblem == nil
@@ -148,7 +148,7 @@ final class ScreenshotDetector {
     private func retry(_ path: String, _ state: Pending) {
         pending[path] = state
         if state.attempts >= StabilityCheck.maxAttempts {
-            Log.detection.info("Gave up waiting for \((path as NSString).lastPathComponent, privacy: .public)")
+            Log.detection.info("Gave up waiting for \((path as NSString).lastPathComponent, privacy: .private)")
             finish(path, "timeout")
             return
         }
@@ -202,7 +202,7 @@ final class ScreenshotDetector {
             path: path, bookmark: ShotStore.bookmark(for: url), identity: probe.identity,
             addedAt: Date(), pixelWidth: size.width, pixelHeight: size.height)
         guard store.add(record) else { return }
-        Log.detection.info("New screenshot \(record.fileName, privacy: .public) via \(source == .folder ? "folder" : "spotlight", privacy: .public)")
+        Log.detection.info("New screenshot \(record.fileName, privacy: .private) via \(source == .folder ? "folder" : "spotlight", privacy: .public)")
         onShotAdded?(record)
         if source == .spotlight, prefs.folderMode == .system,
            (path as NSString).deletingLastPathComponent != watcher?.canonicalPath {

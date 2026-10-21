@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import PeglineCore
 
 /// Image reading helpers. All of them are safe to call from any thread.
 enum ImageInfo {
@@ -23,6 +24,24 @@ enum ImageInfo {
         else { return nil }
         let orientation = props[kCGImagePropertyOrientation] as? Int ?? 1
         return orientation >= 5 ? PixelSize(width: height, height: width) : PixelSize(width: width, height: height)
+    }
+
+    /// Pixel size of image data (for example from the clipboard), read from its header only.
+    nonisolated static func pixelSize(data: Data) -> PixelSize? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return nil
+        }
+        return pixelSize(source: source)
+    }
+
+    nonisolated private static func pixelSize(source: CGImageSource) -> PixelSize? {
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard CGImageSourceGetCount(source) > 0,
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, options) as? [CFString: Any],
+              let width = props[kCGImagePropertyPixelWidth] as? Int,
+              let height = props[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return PixelSize(width: width, height: height)
     }
 
     /// Downsampled image for the line. Decodes only as many pixels as needed.
@@ -53,7 +72,10 @@ enum ImageInfo {
     }
 
     nonisolated private static func pngData(source: CGImageSource) -> Data? {
-        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        // Check the size from the header before decoding, so a huge image cannot exhaust memory.
+        guard let size = pixelSize(source: source), ImageLimits.allows(width: size.width, height: size.height),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
             return nil

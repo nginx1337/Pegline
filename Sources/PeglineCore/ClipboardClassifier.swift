@@ -35,7 +35,8 @@ public enum ClipboardClassifier {
 
     /// Decides from the type lists of each pasteboard item.
     public static func classify(items: [[String]]) -> ClipboardContent {
-        guard !items.isEmpty else { return .nothingUseful }
+        // Never touch contents another app marked as secret or temporary.
+        guard !items.isEmpty, !ClipboardPrivacy.isPrivate(items: items) else { return .nothingUseful }
         let all = Set(items.flatMap { $0 })
         if all.contains("public.file-url") {
             return .imageFile

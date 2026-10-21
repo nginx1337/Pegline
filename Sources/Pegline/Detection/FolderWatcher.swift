@@ -46,13 +46,13 @@ final class FolderWatcher {
             kCFAllocatorDefault, folderEventsCallback, &context, [canonicalPath] as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.08, flags)
         else {
-            Log.detection.error("FSEventStreamCreate failed for \(self.canonicalPath, privacy: .public)")
+            Log.detection.error("FSEventStreamCreate failed for \(self.canonicalPath, privacy: .private)")
             return
         }
         FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
         FSEventStreamStart(stream)
         self.stream = stream
-        Log.detection.info("Watching \(self.canonicalPath, privacy: .public)")
+        Log.detection.info("Watching \(self.canonicalPath, privacy: .private)")
     }
 
     func stop() {

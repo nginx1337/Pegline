@@ -1,10 +1,12 @@
 import AppKit
 
+#if DEBUG
 if let index = CommandLine.arguments.firstIndex(of: "--render-preview") {
-    // Developer aid: renders the line with sample images to a PNG, without showing any window.
+    // Developer aid (debug builds only): renders the line with sample images to a PNG.
     PreviewRenderer.run(arguments: Array(CommandLine.arguments[(index + 1)...]))
     exit(0)
 }
+#endif
 
 let application = NSApplication.shared
 let appDelegate = AppDelegate()
