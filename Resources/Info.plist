@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ru</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>Pegline</string>
+	<key>CFBundleName</key>
+	<string>Pegline</string>
+	<key>CFBundleExecutable</key>
+	<string>Pegline</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.pegline.mac</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>27.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Pegline. Снимки остаются на этом Mac.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Pegline замечает новые снимки экрана, которые macOS сохраняет на рабочий стол, и вешает их на верёвку.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Pegline замечает новые снимки экрана в выбранной папке документов.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Pegline замечает новые снимки экрана в выбранной папке загрузок.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Pegline замечает новые снимки экрана, если папка снимков находится на внешнем диске.</string>
+</dict>
+</plist>

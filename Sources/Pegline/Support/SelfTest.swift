@@ -1,0 +1,209 @@
+#if DEBUG
+import AppKit
+import PeglineCore
+
+/// Debug-only end-to-end check, run with PEGLINE_SELFTEST=1 (and PEGLINE_SELFTEST_DIR with sample images).
+/// Exercises real actions inside the running app and prints PASS/FAIL lines, then quits.
+enum SelfTest {
+    static func run(_ model: AppModel) {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        Task { @MainActor in
+            var failures = 0
+            func check(_ ok: Bool, _ name: String) {
+                print(ok ? "PASS \(name)" : "FAIL \(name)")
+                if !ok { failures += 1 }
+            }
+            func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
+            await wait(0.8)
+            let line = model.line!
+            let canvas = line.lineView.canvas
+
+            // Many photos.
+            if let dir = ProcessInfo.processInfo.environment["PEGLINE_SELFTEST_DIR"],
+               let names = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+                for name in names.sorted() where name.hasSuffix(".png") {
+                    let path = (dir as NSString).appendingPathComponent(name)
+                    guard let px = ImageInfo.pixelSize(path: path), let probe = FileProbe.read(path: path) else { continue }
+                    model.store.add(ShotRecord(path: path, bookmark: ShotStore.bookmark(for: URL(fileURLWithPath: path)),
+                                               identity: probe.identity, addedAt: Date(), pixelWidth: px.width, pixelHeight: px.height))
+                }
+            }
+            guard let first = model.store.shots.first else { print("FAIL no shots"); NSApp.terminate(nil); return }
+            print("INFO shots on line: \(model.store.shots.count), screens: \(NSScreen.screens.count)")
+
+            // Copy.
+            check(model.actions.copy(first), "copy returns true")
+            let pb = NSPasteboard.general
+            let types = pb.types ?? []
+            check(types.contains(.fileURL), "clipboard has file URL")
+            check(types.contains(.png), "clipboard has PNG data")
+            check(NSImage(pasteboard: pb) != nil, "clipboard image readable")
+            check(pb.readObjects(forClasses: [NSURL.self])?.first as? URL == first.url, "clipboard URL is the file")
+
+            // Drag payload: the same file URL a drag would carry.
+            let writer = first.url as NSURL
+            check(writer.writableTypes(for: pb).contains(.fileURL), "drag writer offers file URL")
+
+            // Panel.
+            line.show(reason: .pinned)
+            await wait(0.9)
+            let panel = line.panel
+            check(panel.isVisible, "panel visible")
+            check(!panel.canBecomeKey && !NSApp.isActive, "panel does not take focus")
+            check(panel.collectionBehavior.contains(.canJoinAllSpaces) && panel.collectionBehavior.contains(.fullScreenAuxiliary), "all Spaces + full screen")
+            if let screen = panel.screen {
+                print("INFO panel frame \(panel.frame) on screen \(screen.frame) visible \(screen.visibleFrame)")
+                check(abs(panel.frame.maxY - screen.visibleFrame.maxY) < 1 || panel.frame.maxY <= screen.frame.maxY - screen.safeAreaInsets.top + 1, "panel sits under the menu bar")
+                check(abs(panel.frame.midX - screen.frame.midX) < 1, "panel centred")
+            }
+            let visibleNodes = canvas.nodes.filter(\.isVisibleOnLine).count
+            print("INFO visible photos \(visibleNodes) of \(canvas.nodes.count), visibleCount \(canvas.visibleCount)")
+            check(visibleNodes <= canvas.visibleCount + 1, "visible photos limited")
+            let widths = Set(canvas.nodes.filter(\.isVisibleOnLine).map { Int($0.cardSize.width) })
+            check(widths.allSatisfy { $0 >= 60 }, "photos do not shrink")
+
+            // Pointer pass-through.
+            check(panel.ignoresMouseEvents, "clicks pass through away from photos")
+            if let node = canvas.nodes.first(where: \.isVisibleOnLine) {
+                let center = panel.convertPoint(toScreen: line.lineView.convert(NSPoint(x: node.cardFrame.midX, y: node.cardFrame.midY), to: nil))
+                line.updatePointer(center)
+                check(!panel.ignoresMouseEvents, "photo under pointer receives clicks")
+                check(node.isHovered, "photo shows hover")
+                line.updatePointer(NSPoint(x: center.x, y: center.y - 400))
+                check(panel.ignoresMouseEvents, "pass-through again after leaving")
+            }
+
+            // Scrolling through a long line.
+            if canvas.maxScrollOffset > 0 {
+                let before = canvas.scrollOffset
+                canvas.page(1)
+                check(canvas.scrollOffset > before, "page right scrolls")
+                print("INFO hidden left/right \(canvas.hiddenCounts)")
+                canvas.page(-1)
+                check(canvas.scrollOffset == 0, "page left back to start")
+            }
+
+            // Markup availability.
+            print("INFO markup service available: \(MarkupPresenter.isAvailable)")
+
+            // Unpin keeps the file.
+            if let last = model.store.shots.last {
+                model.actions.unpin(last)
+                check(FileManager.default.fileExists(atPath: last.path), "unpin keeps the file")
+                check(model.store.record(id: last.id) == nil, "unpin removes from line")
+            }
+
+            // Hide releases everything.
+            line.hide()
+            await wait(0.8)
+            check(!panel.isVisible, "panel ordered out after hide")
+            check(canvas.nodes.allSatisfy { ($0.hanger.animationKeys() ?? []).isEmpty }, "no animations left running")
+            check(model.store.shots.count > 0, "hiding keeps photos")
+
+            // Skipped beside a real instance: it shares the same settings.
+            if ProcessInfo.processInfo.environment["PEGLINE_STORE_DIR"] == nil {
+                // Consent-managed system setting and its restore.
+                let before = SystemScreenshotPrefs.value("show-thumbnail")
+                model.prefs.manageFloatingThumbnail = true
+                await wait(0.3)
+                check(SystemScreenshotPrefs.showsFloatingThumbnail == false, "floating thumbnail turned off on request")
+                model.systemSettings.restoreAll()
+                let after = SystemScreenshotPrefs.value("show-thumbnail")
+                check((before == nil && after == nil) || (before as? Bool) == (after as? Bool), "original value restored")
+                model.prefs.manageFloatingThumbnail = false
+            }
+
+            // Clipboard: a screenshot copied with ⌃⇧⌘4 is just image data on the clipboard.
+            if ProcessInfo.processInfo.environment["PEGLINE_SELFTEST_CLIPBOARD"] != nil {
+                let savedMode = model.prefs.clipboardMode
+                defer { model.prefs.clipboardMode = savedMode }
+                model.prefs.clipboardMode = .screenshots
+                let png = ImageInfo.pngData(path: first.path)!
+                let countBefore = model.store.shots.count
+                let shot = NSPasteboardItem()
+                shot.setData(png, forType: .png)
+                pb.clearContents()
+                pb.writeObjects([shot])
+                await wait(1.2)
+                let hung = model.store.shots.first
+                check(hung?.origin == "clipboard", "clipboard screenshot hung on the line")
+                if let hung {
+                    check(hung.path.hasPrefix(ClipboardImporter.folder.path), "saved into Pictures/Pegline")
+                    check(ScreenshotClassifier.hasScreenCaptureAttribute(atPath: hung.path), "marked as a screenshot")
+                    print("INFO saved \(hung.path)")
+                }
+                check(model.store.shots.count == countBefore + 1, "exactly one photo added")
+
+                // The same picture copied again does not hang twice.
+                pb.clearContents()
+                pb.writeObjects([{ let i = NSPasteboardItem(); i.setData(png, forType: .png); return i }()])
+                await wait(1.0)
+                check(model.store.shots.count == countBefore + 1, "same image not added twice")
+
+                // An image copied from a web page is not a screenshot.
+                let web = NSPasteboardItem()
+                web.setData(ImageInfo.pngData(path: model.store.shots.last!.path)!, forType: .png)
+                web.setString("<img src=x>", forType: .html)
+                pb.clearContents()
+                pb.writeObjects([web])
+                await wait(1.0)
+                check(model.store.shots.count == countBefore + 1, "web image ignored in screenshots mode")
+
+                // Telegram-style copy: a file in another app's private container we cannot read, plus TIFF data.
+                model.prefs.clipboardMode = .allImages
+                func writeFileCopy(path: String, tiffFrom imagePath: String) {
+                    let fileItem = NSPasteboardItem()
+                    fileItem.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL)
+                    let imageItem = NSPasteboardItem()
+                    imageItem.setData(NSImage(contentsOfFile: imagePath)!.tiffRepresentation!, forType: .tiff)
+                    pb.clearContents()
+                    pb.writeObjects([fileItem, imageItem])
+                }
+                let samplePath = model.store.shots.last!.path
+                var count = model.store.shots.count
+                writeFileCopy(path: "/Users/nobody/Library/Containers/ru.keepcoder.Telegram/Data/tmp/photo.jpg", tiffFrom: samplePath)
+                await wait(1.2)
+                check(model.store.shots.count == count + 1, "Telegram-style image (unreadable file + TIFF) hung")
+                check(model.store.shots.first?.origin == "clipboard", "Telegram-style image saved as a copy")
+
+                // Finder copy of a folder: the TIFF is only the folder icon.
+                count = model.store.shots.count
+                writeFileCopy(path: NSHomeDirectory(), tiffFrom: samplePath)
+                await wait(1.2)
+                check(model.store.shots.count == count, "copied folder icon ignored")
+
+                // Image file in a temporary place: hang a copy, since the original may vanish.
+                count = model.store.shots.count
+                let temp = (NSTemporaryDirectory() as NSString).appendingPathComponent("pegline-selftest.jpg")
+                let jpeg = NSBitmapImageRep(data: NSImage(contentsOfFile: samplePath)!.tiffRepresentation!)!
+                    .representation(using: .jpeg, properties: [.compressionFactor: 0.8])!
+                try? jpeg.write(to: URL(fileURLWithPath: temp))
+                writeFileCopy(path: temp, tiffFrom: samplePath)
+                await wait(1.2)
+                check(model.store.shots.count == count + 1, "temporary image file copied onto the line")
+                check(model.store.shots.first?.path.hasSuffix(".jpg") == true, "JPEG kept as JPEG")
+                try? FileManager.default.removeItem(atPath: temp)
+                model.prefs.clipboardMode = .screenshots
+
+                // Pegline's own copy is never re-added.
+                model.prefs.clipboardMode = .allImages
+                count = model.store.shots.count
+                model.actions.copy(model.store.shots.last!)
+                await wait(1.0)
+                check(model.store.shots.count == count, "own copy not re-added")
+                // Leave plain text behind so other running copies of Pegline have nothing to pick up.
+                pb.clearContents()
+                pb.setString("Pegline self-test", forType: .string)
+            }
+
+            if ProcessInfo.processInfo.environment["PEGLINE_SELFTEST_OPEN"] != nil {
+                model.actions.openInPreview(first)
+                await wait(1.5)
+                check(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Preview").count > 0, "Preview opened")
+            }
+            print(failures == 0 ? "SELFTEST OK" : "SELFTEST FAILED \(failures)")
+            if ProcessInfo.processInfo.environment["PEGLINE_SELFTEST_STAY"] == nil { NSApp.terminate(nil) }
+        }
+    }
+}
+#endif
