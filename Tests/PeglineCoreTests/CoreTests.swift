@@ -210,3 +210,54 @@ struct FileReferenceTests {
         #expect(ClipboardClassifier.fileExtension(forType: "public.tiff") == "png")
     }
 }
+
+@Suite("Dismissed shots and Trash")
+struct DismissTests {
+    func record(_ path: String, inode: UInt64) -> ShotRecord {
+        ShotRecord(path: path, bookmark: nil, identity: FileIdentity(device: 1, inode: inode),
+                   addedAt: Date(), pixelWidth: 10, pixelHeight: 10)
+    }
+
+    @Test func unpinnedShotIsRememberedByPathAndIdentity() {
+        var collection = ShotCollection()
+        let shot = record("/a.png", inode: 7)
+        collection.insert(shot)
+        collection.remove(id: shot.id, dismiss: true)
+        #expect(collection.wasDismissed(path: "/a.png", identity: nil))
+        // Renamed later: same file, new name.
+        #expect(collection.wasDismissed(path: "/renamed.png", identity: FileIdentity(device: 1, inode: 7)))
+    }
+
+    @Test func goneFilesAreNotDismissed() {
+        var collection = ShotCollection()
+        let shot = record("/a.png", inode: 7)
+        collection.insert(shot)
+        collection.remove(id: shot.id)
+        #expect(!collection.wasDismissed(path: "/a.png", identity: nil))
+    }
+
+    @Test func overflowAndClearAllDismiss() {
+        var collection = ShotCollection(capacity: 1)
+        collection.insert(record("/1.png", inode: 1))
+        collection.insert(record("/2.png", inode: 2))
+        #expect(collection.wasDismissed(path: "/1.png", identity: nil))
+        collection.removeAll()
+        #expect(collection.wasDismissed(path: "/2.png", identity: nil))
+    }
+
+    @Test func hangingAgainLiftsDismissal() {
+        var collection = ShotCollection()
+        let shot = record("/a.png", inode: 7)
+        collection.insert(shot)
+        collection.remove(id: shot.id, dismiss: true)
+        collection.insert(record("/a.png", inode: 7))
+        #expect(!collection.wasDismissed(path: "/a.png", identity: nil))
+    }
+
+    @Test func trashOnAnyVolume() {
+        #expect(FileLocations.isInTrash("/Users/me/.Trash/shot.png"))
+        #expect(FileLocations.isInTrash("/Volumes/Ext/.Trashes/501/shot.png"))
+        #expect(!FileLocations.isInTrash("/Users/me/Desktop/.Trashy/shot.png"))
+        #expect(ClipboardClassifier.isTemporaryLocation("/Volumes/Ext/.Trashes/501/shot.png"))
+    }
+}

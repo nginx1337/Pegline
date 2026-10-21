@@ -93,6 +93,74 @@ enum SelfTest {
                 check(model.store.record(id: last.id) == nil, "unpin removes from line")
             }
 
+            // Mouse handling with synthesized events.
+            func mouse(_ type: NSEvent.EventType, _ point: NSPoint, clicks: Int) -> NSEvent {
+                NSEvent.mouseEvent(
+                    with: type, location: line.lineView.convert(point, to: nil), modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
+            }
+            if let node = canvas.nodes.first(where: \.isVisibleOnLine) {
+                let p = NSPoint(x: node.cardFrame.midX, y: node.cardFrame.midY)
+                pb.clearContents()
+                pb.setString("keep", forType: .string)
+                canvas.mouseDown(with: mouse(.leftMouseDown, p, clicks: 1))
+                canvas.mouseUp(with: mouse(.leftMouseUp, p, clicks: 1))
+                check(pb.string(forType: .string) == "keep", "single click waits before copying")
+                canvas.mouseDown(with: mouse(.leftMouseDown, p, clicks: 2))
+                canvas.mouseUp(with: mouse(.leftMouseUp, NSPoint(x: -500, y: -500), clicks: 2))
+                await wait(NSEvent.doubleClickInterval + 0.3)
+                check(pb.string(forType: .string) == "keep", "double-click leaves the clipboard alone")
+                canvas.mouseDown(with: mouse(.leftMouseDown, p, clicks: 1))
+                canvas.mouseUp(with: mouse(.leftMouseUp, p, clicks: 1))
+                await wait(NSEvent.doubleClickInterval + 0.3)
+                check(pb.types?.contains(.fileURL) == true, "single click copies after the pause")
+                check(line.interactions == 0, "clicks leave no interaction open")
+
+                // The pressed photo disappears before the button is released.
+                canvas.mouseDown(with: mouse(.leftMouseDown, p, clicks: 1))
+                check(line.interactions == 1, "press starts an interaction")
+                model.store.remove(id: node.id, reason: .unpinned)
+                canvas.mouseUp(with: mouse(.leftMouseUp, p, clicks: 1))
+                check(line.interactions == 0, "press ends even if the photo vanished")
+                check(model.store.collection.wasDismissed(path: node.record.path, identity: node.record.identity),
+                      "unpinned photo remembered as dismissed")
+                pb.clearContents()
+                pb.setString("Pegline self-test", forType: .string)
+            }
+
+            // System settings: Pegline never undoes a change the user made in ⇧⌘5 meanwhile.
+            do {
+                let suite = "app.pegline.selftest"
+                let scratch = UserDefaults(suiteName: suite)!
+                scratch.removePersistentDomain(forName: suite)
+                let domain = "app.pegline.selftest.screencapture" as CFString
+                let key = "show-thumbnail" as CFString
+                func value() -> Bool? {
+                    CFPreferencesAppSynchronize(domain)
+                    return CFPreferencesCopyAppValue(key, domain) as? Bool
+                }
+                func userSets(_ v: Bool?) {
+                    CFPreferencesSetAppValue(key, v as CFPropertyList?, domain)
+                    CFPreferencesAppSynchronize(domain)
+                }
+                userSets(nil)
+                let settings = ScreenshotSystemSettings(domain: domain, defaults: scratch)
+                check(settings.set("show-thumbnail", false as CFPropertyList) && value() == false, "managed value applied")
+                settings.restore("show-thumbnail")
+                check(value() == nil, "original restored when untouched")
+                _ = settings.set("show-thumbnail", false as CFPropertyList)
+                userSets(true)
+                settings.restore("show-thumbnail")
+                check(value() == true, "user's later choice kept on restore")
+                _ = settings.set("show-thumbnail", false as CFPropertyList)
+                userSets(true)
+                check(!settings.set("show-thumbnail", false as CFPropertyList) && value() == true, "re-apply yields to the user's change")
+                check(!settings.hasChanges, "nothing left to restore after yielding")
+                userSets(nil)
+                scratch.removePersistentDomain(forName: suite)
+            }
+
             // Hide releases everything.
             line.hide()
             await wait(0.8)

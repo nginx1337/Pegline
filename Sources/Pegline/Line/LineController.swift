@@ -28,7 +28,7 @@ final class LineController: LineCanvasDelegate {
     private var monitors: [Any] = []
     private var pointerInside = false
     private var lastPointer = NSPoint.zero
-    private var interactions = 0
+    private(set) var interactions = 0
 
     var onVisibilityChanged: ((Bool) -> Void)?
 

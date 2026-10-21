@@ -133,7 +133,7 @@ final class Preferences {
         clipboardMode = ClipboardMode(rawValue: d.string(forKey: "clipboardMode") ?? "") ?? .screenshots
         lineCapacity = d.object(forKey: "lineCapacity") as? Int ?? 60
         if let data = d.data(forKey: "hotKey") {
-            hotKey = try? JSONDecoder().decode(HotKeyCombo.self, from: data)
+            hotKey = (try? JSONDecoder().decode(HotKeyCombo.self, from: data))?.normalized()
         } else {
             hotKey = d.object(forKey: "hotKeyCleared") == nil ? .defaultCombo : nil
         }

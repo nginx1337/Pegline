@@ -57,6 +57,11 @@ final class ShotStore {
     func isTracked(path: String) -> Bool { collection.contains(path: path) }
     func isTracked(identity: FileIdentity?) -> Bool { collection.contains(identity: identity) }
 
+    /// The user took this file off the line earlier in this session.
+    func wasDismissed(path: String?, identity: FileIdentity?) -> Bool {
+        collection.wasDismissed(path: path, identity: identity)
+    }
+
     // MARK: Changes
 
     @discardableResult
@@ -73,7 +78,7 @@ final class ShotStore {
     }
 
     func remove(id: UUID, reason: RemovalReason) {
-        guard let removed = collection.remove(id: id) else { return }
+        guard let removed = collection.remove(id: id, dismiss: reason == .unpinned) else { return }
         Log.store.info("Removed \(removed.fileName, privacy: .public)")
         notify(.removed(removed, reason))
         scheduleSave()
@@ -134,7 +139,7 @@ final class ShotStore {
             return
         }
         // The name is gone: follow the bookmark to see whether it was renamed or moved.
-        if let moved = Self.resolve(record), !moved.path.contains("/.Trash/") {
+        if let moved = Self.resolve(record), !FileLocations.isInTrash(moved.path) {
             var updated = record
             updated.path = moved.path
             updated.bookmark = Self.bookmark(for: moved) ?? record.bookmark

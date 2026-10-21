@@ -85,8 +85,9 @@ public enum ClipboardClassifier {
     /// Places where apps keep scratch copies: other apps' containers, caches and temporary folders.
     public static func isTemporaryLocation(_ path: String) -> Bool {
         let markers = ["/Library/Containers/", "/Library/Group Containers/", "/Library/Caches/",
-                       "/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/", "/.Trash/"]
+                       "/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/"]
         return markers.contains { path.contains($0) } || path.hasPrefix(NSTemporaryDirectory())
+            || FileLocations.isInTrash(path)
     }
 
     /// File extension to keep the original encoding where it is widely readable; TIFF becomes PNG.

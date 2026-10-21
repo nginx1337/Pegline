@@ -127,7 +127,8 @@ final class ScreenshotDetector {
     private func consider(path: String, source: Source) {
         let name = (path as NSString).lastPathComponent
         guard classifier.isImageCandidate(fileName: name) else { return }
-        guard pending[path] == nil, !store.isTracked(path: path) else { return }
+        guard pending[path] == nil, !store.isTracked(path: path),
+              !store.wasDismissed(path: path, identity: nil) else { return }
         pending[path] = Pending(source: source)
         schedule(path, after: 0.06)
     }
@@ -165,7 +166,8 @@ final class ScreenshotDetector {
         if probe.created < sessionStart.timeIntervalSince1970 - 2 {
             return finish(path, "pre-existing")
         }
-        if store.isTracked(identity: probe.identity) || store.isTracked(path: path) {
+        if store.isTracked(identity: probe.identity) || store.isTracked(path: path)
+            || store.wasDismissed(path: path, identity: probe.identity) {
             return finish(path, "duplicate")
         }
         let policy: CapturePolicy = state.source == .spotlight ? .screenshotsOnly : prefs.capturePolicy

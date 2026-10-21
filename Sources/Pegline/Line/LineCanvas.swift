@@ -48,6 +48,12 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
     private var longPressFired = false
     private var dragStarted = false
     private var draggingNode: PhotoNode?
+    /// True between canvasInteractionBegan and canvasInteractionEnded for a press,
+    /// so the two are always balanced, whatever happens to the pressed photo.
+    private var pressActive = false
+    /// Single-click copy waits for the double-click interval, so a double-click
+    /// (open in Preview) never overwrites the clipboard.
+    private var pendingCopy: Task<Void, Never>?
     private var scrollVelocity: CGFloat = 0
     private var accessibilityCache: [UUID: PhotoAccessibilityElement] = [:]
 
@@ -365,7 +371,11 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
             hovered = nil
             overlay?.hideInfo()
         }
-        if pressed === node { pressed = nil }
+        if pressed === node {
+            longPressTask?.cancel()
+            pressed = nil
+        }
+        if draggingNode === node { draggingNode = nil }
         if animated, isOnScreen, motion != .off, node.isVisibleOnLine {
             animateExit(node, exit)
         } else {
@@ -615,21 +625,42 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
     // MARK: Mouse
 
     override func mouseDown(with event: NSEvent) {
+        // ⌃-click is a right click: let AppKit show the context menu.
+        if event.modifierFlags.contains(.control) {
+            super.mouseDown(with: event)
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         guard let node = node(at: point) else { return }
+        if event.clickCount >= 2 { pendingCopy?.cancel() }
+        endPress()
         pressed = node
+        pressActive = true
         downPoint = point
         longPressFired = false
         dragStarted = false
         if hovered !== node { pointerMoved(to: point, deltaX: 0) }
         node.setPressed(true, palette: palette, motion: motion)
         delegate?.canvasInteractionBegan(self)
-        longPressTask?.cancel()
         guard event.clickCount == 1 else { return }
         longPressTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(550))
             guard !Task.isCancelled else { return }
             self?.firedLongPress()
+        }
+    }
+
+    /// Finishes the current press: clears its look and ends the interaction exactly once.
+    private func endPress() {
+        longPressTask?.cancel()
+        longPressTask = nil
+        if let node = pressed {
+            node.setPressed(false, palette: palette, motion: motion)
+            pressed = nil
+        }
+        if pressActive {
+            pressActive = false
+            delegate?.canvasInteractionEnded(self)
         }
     }
 
@@ -652,19 +683,25 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
-        longPressTask?.cancel()
-        guard let node = pressed else { return }
-        pressed = nil
-        node.setPressed(false, palette: palette, motion: motion)
-        defer { if draggingNode == nil { delegate?.canvasInteractionEnded(self) } }
-        guard !longPressFired, !dragStarted else { return }
+        // A running drag session owns the end of this press (see draggingSession(_:endedAt:)).
+        guard draggingNode == nil else { return }
+        let node = pressed
+        let wasLongPress = longPressFired, wasDrag = dragStarted
+        endPress()
+        guard let node, !wasLongPress, !wasDrag, nodes.contains(where: { $0 === node }) else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard node.hitFrame.insetBy(dx: -4, dy: -4).contains(point) else { return }
         if event.clickCount >= 2 {
+            pendingCopy?.cancel()
             overlay?.showFeedback("Открываю в «Просмотре»", symbol: "eye", for: node)
             perform(.openInPreview, on: node)
         } else {
-            performCopy(node)
+            pendingCopy?.cancel()
+            pendingCopy = Task { [weak self, weak node] in
+                try? await Task.sleep(for: .seconds(NSEvent.doubleClickInterval))
+                guard !Task.isCancelled, let self, let node, self.nodes.contains(where: { $0 === node }) else { return }
+                self.performCopy(node)
+            }
         }
     }
 
@@ -694,9 +731,7 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         guard let node = node(at: point), let delegate else { return nil }
-        longPressTask?.cancel()
-        pressed = nil
-        node.setPressed(false, palette: palette, motion: motion)
+        endPress()
         let menu = delegate.canvas(self, menuFor: node.record, sourceFrame: screenFrame(of: node))
         menu.delegate = self
         return menu
@@ -744,6 +779,12 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
         let session = beginDraggingSession(with: [item], event: event, source: self)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
+        // AppKit sends no mouseUp after a drag, so the press visual is cleared here
+        // and the interaction is ended when the session finishes.
+        if pressed === node {
+            node.setPressed(false, palette: palette, motion: motion)
+            pressed = nil
+        }
         draggingNode = node
         node.setLifted(true)
         overlay?.hideInfo()
@@ -755,6 +796,8 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        // Always close the press, even if the photo was removed during the drag.
+        defer { endPress() }
         guard let node = draggingNode else { return }
         draggingNode = nil
         node.setLifted(false)
@@ -762,7 +805,6 @@ final class LineCanvas: NSView, NSDraggingSource, NSMenuDelegate {
         if hovered === node { hovered = nil }
         if operation != [] { push(node, amplitude: 0.04) }
         startIdle(node, delay: 0.8)
-        delegate?.canvasInteractionEnded(self)
     }
 
     // MARK: Accessibility

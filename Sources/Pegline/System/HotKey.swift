@@ -63,10 +63,39 @@ struct HotKeyCombo: Codable, Equatable {
     ]
 
     private static func label(for event: NSEvent) -> String {
-        if let special = specialKeys[Int(event.keyCode)] { return special }
-        // Use the US layout letter so the label matches what the key code means globally.
-        let chars = event.charactersIgnoringModifiers?.uppercased() ?? "?"
-        return chars.isEmpty ? "?" : chars
+        label(keyCode: event.keyCode) ?? {
+            let chars = event.charactersIgnoringModifiers?.uppercased() ?? "?"
+            return chars.isEmpty ? "?" : chars
+        }()
+    }
+
+    /// Label for a physical key from the Latin (ASCII-capable) layout, so ⌃⌥⌘L shows "L"
+    /// even when the Russian layout is active at the moment of recording.
+    static func label(keyCode: UInt16) -> String? {
+        if let special = specialKeys[Int(keyCode)] { return special }
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        let layout = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+        var deadKeys: UInt32 = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        var length = 0
+        let status = layout.withUnsafeBytes { buffer -> OSStatus in
+            guard let base = buffer.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return -1 }
+            return UCKeyTranslate(
+                base, keyCode, UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeys, chars.count, &length, &chars)
+        }
+        guard status == noErr, length > 0 else { return nil }
+        let label = String(utf16CodeUnits: chars, count: length).uppercased()
+        return label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : label
+    }
+
+    /// Recomputes the label from the key code (fixes labels recorded under a non-Latin layout).
+    func normalized() -> HotKeyCombo {
+        var copy = self
+        if let label = HotKeyCombo.label(keyCode: UInt16(keyCode)) { copy.keyLabel = label }
+        return copy
     }
 }
 

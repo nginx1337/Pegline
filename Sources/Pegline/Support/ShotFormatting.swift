@@ -19,7 +19,7 @@ enum ShotFormatting {
     /// "только что", "5 мин назад", "сегодня в 15:12", "вчера в 09:03", "3 окт., 18:40".
     static func relative(_ date: Date, now: Date = Date()) -> String {
         let seconds = now.timeIntervalSince(date)
-        if seconds < 45 { return "только что" }
+        if seconds < 60 { return "только что" }
         if seconds < 3600 { return "\(Int(seconds / 60)) мин назад" }
         let calendar = Calendar.current
         if calendar.isDateInToday(date) { return "сегодня в \(time.string(from: date))" }

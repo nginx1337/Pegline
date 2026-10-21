@@ -17,6 +17,9 @@ final class ClipboardWatcher {
         var isScreenshot: Bool
     }
 
+    /// More files than this in one copy are ignored.
+    static let maxCopiedFiles = 8
+
     private let pasteboard = NSPasteboard.general
     private var timer: Timer?
     private var lastChange: Int
@@ -62,6 +65,12 @@ final class ClipboardWatcher {
     /// read (Telegram, Messages, Photos keep them in private containers) use the image data that came along.
     private func handleFileReferences(items: [[String]]) {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        // Copying a big Finder selection is file management, not "hang these": skip it before
+        // touching any file, so the line is not flooded and older photos are not pushed off.
+        guard urls.count <= Self.maxCopiedFiles else {
+            Log.detection.info("Skipped clipboard with \(urls.count) files (limit \(Self.maxCopiedFiles))")
+            return
+        }
         var inPlace: [URL] = []
         var copied = false
         var unreadable = false

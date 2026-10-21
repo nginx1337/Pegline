@@ -213,21 +213,24 @@ final class MarkupPresenter: NSObject, NSSharingServiceDelegate {
         fallback?()
     }
 
-    private func editedURL() -> URL? {
+    /// Name next to the original; the extension matches the format of the data written.
+    private func editedURL(extension ext: String) -> URL? {
         guard let originalURL else { return nil }
         let base = originalURL.deletingPathExtension().lastPathComponent
         let folder = originalURL.deletingLastPathComponent()
-        var candidate = folder.appendingPathComponent("\(base) — разметка").appendingPathExtension("png")
+        var candidate = folder.appendingPathComponent("\(base) — разметка").appendingPathExtension(ext)
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = folder.appendingPathComponent("\(base) — разметка \(n)").appendingPathExtension("png")
+            candidate = folder.appendingPathComponent("\(base) — разметка \(n)").appendingPathExtension(ext)
             n += 1
         }
         return candidate
     }
 
     private func saveAlongside(sourceURL: URL) {
-        guard let destination = editedURL() else { return }
+        // The bytes are copied as they are, so keep the result's own extension (JPEG stays .jpg).
+        let ext = sourceURL.pathExtension.isEmpty ? (originalURL?.pathExtension ?? "png") : sourceURL.pathExtension
+        guard let destination = editedURL(extension: ext) else { return }
         do {
             try FileManager.default.copyItem(at: sourceURL, to: destination)
             onSavedCopy?(destination)
@@ -236,8 +239,9 @@ final class MarkupPresenter: NSObject, NSSharingServiceDelegate {
         }
     }
 
+    /// `data` is always PNG here (encoded from the returned image).
     private func writeAlongside(data: Data) {
-        guard let destination = editedURL() else { return }
+        guard let destination = editedURL(extension: "png") else { return }
         do {
             try data.write(to: destination, options: .withoutOverwriting)
             onSavedCopy?(destination)
